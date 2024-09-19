@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Most Liked YouTube Comment</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.5.0/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            text-align: center;
+            background-color: #1e1e1e;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #ff4444;
+        }
+        input {
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #cccccc;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            background-color: #ff4444;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #comment-container {
+            display: flex;
+            align-items: center;
+            margin-top: 2rem;
+            text-align: left;
+        }
+        #user-image {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 1rem;
+        }
+        #comment-content {
+            flex-grow: 1;
+        }
+        #username {
+            font-weight: bold;
+            color: #4a90e2;
+            margin-bottom: 0.5rem;
+        }
+        #comment {
+            font-style: italic;
+            color: #cccccc;
+        }
+        #error {
+            color: #ff6b6b;
+            margin-top: 1rem;
+        }
+        #date {
+            color: #888;
+            font-size: 0.8em;
+            margin-top: 1rem;
+        }
+        iframe {
+            margin-top: 2rem;
+            border: none;
+            width: 100%;
+            height: 315px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Most Liked Comment Finder</h1>
+
+        <!-- Input for Channel ID or Handle -->
+        <input type="text" id="channel-id-or-handle" placeholder="Enter YouTube Channel ID or @handle">
+        <button onclick="fetchMostLikedComment()">Find Most Liked Comment</button>
+
+        <div id="comment-container" style="display: none;">
+            <img id="user-image" src="/api/placeholder/50/50" alt="User profile picture">
+            <div id="comment-content">
+                <div id="username">Loading...</div>
+                <div id="comment">Loading...</div>
+            </div>
+        </div>
+
+        <!-- YouTube video iframe -->
+        <iframe id="youtube-video" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        
+        <div id="date"></div>
+        <div id="error"></div>
+    </div>
+
+    <script>
+        const apiKey = 'AIzaSyBAprgb5Sd7EhraEltg6elvxbatWi6HicA';  // Replace with your YouTube API key
+
+        async function fetchMostLikedComment() {
+            const input = document.getElementById('channel-id-or-handle').value.trim();
+            if (!input) {
+                alert('Please enter a channel ID or handle.');
+                return;
+            }
+
+            try {
+                let channelId;
+
+                if (input.startsWith('@')) {
+                    // If the input is a handle, resolve it to a channel ID
+                    channelId = await fetchChannelIdFromHandle(input);
+                } else {
+                    // If the input is not a handle, assume it's a channel ID
+                    channelId = input;
+                }
+
+                // Step 1: Fetch the latest video from the channel
+                let videoId = await fetchLatestVideoId(channelId);
+
+                // Step 2: Fetch the comments for the video
+                let mostLikedComment = await fetchMostLikedCommentFromVideo(videoId);
+
+                // Step 3: Display the comment and video
+                displayComment(mostLikedComment, videoId);
+            } catch (error) {
+                document.getElementById('error').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function fetchChannelIdFromHandle(handle) {
+            const response = await axios.get(`https://www.googleapis.com/youtube/v3/search`, {
+                params: {
+                    part: 'snippet',
+                    q: handle,
+                    type: 'channel',
+                    maxResults: 1,
+                    key: apiKey
+                }
+            });
+
+            const channel = response.data.items[0];
+            if (!channel) {
+                throw new Error('Channel not found.');
+            }
+            return channel.id.channelId;  // Return the channel ID
+        }
+
+        async function fetchLatestVideoId(channelId) {
+            const response = await axios.get(`https://www.googleapis.com/youtube/v3/search`, {
+                params: {
+                    part: 'snippet',
+                    channelId: channelId,
+                    order: 'date',
+                    maxResults: 1,
+                    key: apiKey
+                }
+            });
+
+            const latestVideo = response.data.items[0];
+            if (!latestVideo) {
+                throw new Error('No videos found for this channel.');
+            }
+            return latestVideo.id.videoId;  // Return the video ID of the latest video
+        }
+
+        async function fetchMostLikedCommentFromVideo(videoId) {
+            const response = await axios.get(`https://www.googleapis.com/youtube/v3/commentThreads`, {
+                params: {
+                    part: 'snippet',
+                    videoId: videoId,
+                    order: 'relevance',
+                    maxResults: 100,
+                    key: apiKey
+                }
+            });
+
+            const comments = response.data.items;
+            if (!comments.length) {
+                throw new Error('No comments found for this video.');
+            }
+
+            // Get the comment with the most likes
+            let mostLikedComment = comments[0];
+            comments.forEach(comment => {
+                if (comment.snippet.topLevelComment.snippet.likeCount > mostLikedComment.snippet.topLevelComment.snippet.likeCount) {
+                    mostLikedComment = comment;
+                }
+            });
+
+            return mostLikedComment;
+        }
+
+        function displayComment(commentData, videoId) {
+            const commentSnippet = commentData.snippet.topLevelComment.snippet;
+            document.getElementById('username').textContent = commentSnippet.authorDisplayName;
+            document.getElementById('comment').textContent = commentSnippet.textDisplay;
+            document.getElementById('user-image').src = commentSnippet.authorProfileImageUrl;
+            document.getElementById('date').textContent = `Comment fetched on: ${new Date().toISOString().split('T')[0]}`;
+            
+            // Display the YouTube video
+            const videoIframe = document.getElementById('youtube-video');
+            videoIframe.src = `https://www.youtube.com/embed/${videoId}`;
+            
+            // Show the comment section
+            document.getElementById('comment-container').style.display = 'flex';
+        }
+    </script>
+</body>
+</html>
